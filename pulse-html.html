@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pulse Check 💜</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+  const { useState, useEffect } = React;
+
+  // ✏️ ЗАМІНИТИ НА СВІЙ n8n URL:
+  const BASE = "https://YOUR-N8N.com/webhook/pulse";
+  // Ендпоінти:
+  // POST BASE/entry      — зберегти запис
+  // POST BASE/load       — завантажити дані юзера
+  // POST BASE/schedule   — зберегти розклад (тренер)
+  // GET  BASE/schedule   — отримати розклад
+  // POST BASE/pin        — перевірити PIN
+
+  const WEEKS  = [{label:"Week 1",emoji:"⭐🍎"},{label:"Week 2",emoji:"🍏👏"},{label:"Week 3",emoji:"🍍✍️"},{label:"Week 4",emoji:"🍋🍐"}];
+  const DAYS   = ["Mon","Tue","Wed","Thu","Fri"];
+  const MOODS  = [{v:1,e:"😞",bg:"bg-red-100",ri:"ring-red-400"},{v:2,e:"😕",bg:"bg-orange-100",ri:"ring-orange-400"},{v:3,e:"😐",bg:"bg-yellow-100",ri:"ring-yellow-400"},{v:4,e:"😊",bg:"bg-green-100",ri:"ring-green-400"},{v:5,e:"🤩",bg:"bg-emerald-100",ri:"ring-emerald-500"}];
+  const MBGS   = ["","bg-red-400","bg-orange-400","bg-yellow-400","bg-green-400","bg-emerald-500"];
+
+  function addDays(s,n){const d=new Date(s);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+  function fmt(s){if(!s)return"—";return new Date(s).toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}
+  function buildSched(sd){return WEEKS.map((w,wi)=>({...w,days:DAYS.map((d,di)=>{const iso=addDays(sd,wi*7+di);return{d,date:fmt(iso),iso};})}));}
+
+  async function api(path, body){
+    const isGet = !body;
+    const res = await fetch(BASE+path, isGet ? undefined : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    return res.json();
+  }
+
+  function Toast({t}){return <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium ${t.type==="ok"?"bg-green-500":"bg-orange-500"} text-white`}>{t.msg}</div>;}
+  function Spinner(){return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-violet-100"><div className="text-4xl animate-pulse">💜</div></div>;}
+
+  // ════════════════════════════════════════════════════════════
+  function App(){
+    const [view,setView]   = useState("login");
+    const [user,setUser]   = useState("");
+    const [nameIn,setNameIn] = useState("");
+    const [pinIn,setPinIn] = useState("");
+    const [pinErr,setPinErr] = useState(false);
+    const [sched,setSched] = useState(null);
+    const [startDate,setStartDate] = useState("");
+    const [data,setData]   = useState({});
+    const [editing,setEditing] = useState(null);
+    const [draft,setDraft] = useState({mood:null,comment:""});
+    const [saving,setSaving] = useState(false);
+    const [loading,setLoading] = useState(false);
+    const [toast,setToast] = useState(null);
+    const [activeW,setActiveW] = useState(0);
+
+    useEffect(()=>{
+      api("/schedule").then(r=>{
+        if(r?.startDate){setSched(buildSched(r.startDate));setStartDate(r.startDate);}
+      }).catch(()=>{});
+    },[]);
+
+    const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
+
+    const handleLogin=async()=>{
+      if(!nameIn.trim())return;
+      setLoading(true);
+      try{
+        const r=await api("/load",{agent:nameIn.trim()});
+        setData(r?.data||{});
+      }catch{setData({});}
+      setUser(nameIn.trim()); setView("agent"); setLoading(false);
+    };
+
+    const handlePin=async()=>{
+      const r=await api("/pin",{pin:pinIn}).catch(()=>({ok:false}));
+      if(r?.ok){setPinErr(false);setView("trainer");}else setPinErr(true);
+    };
+
+    const saveSched=async()=>{
+      if(!startDate)return showToast("⚠️ Pick a start date","warn");
+      await api("/schedule",{startDate}).catch(()=>{});
+      setSched(buildSched(startDate));
+      showToast("✅ Schedule saved!");
+    };
+
+    const saveEntry=async()=>{
+      if(!draft.mood)return showToast("⚠️ Select a mood first","warn");
+      if(draft.mood<3&&!draft.comment.trim())return showToast("⚠️ Leave a comment for your trainer","warn");
+      setSaving(true);
+      const [wk,day]=editing.split("_"); const wi=parseInt(wk.replace("W",""))-1;
+      const wo=sched?.[wi]; const dobj=wo?.days.find(d=>d.d===day);
+      const nd={...data,[editing]:{mood:draft.mood,comment:draft.comment,savedAt:new Date().toISOString()}};
+      setData(nd);
+      await api("/entry",{agent:user,week:wo?.label,day,date:dobj?.date,mood:draft.mood,comment:draft.comment,timestamp:new Date().toISOString(),key:editing}).catch(()=>{});
+      setSaving(false); setEditing(null); showToast("✅ Saved!");
+    };
+
+    const wStats=wi=>{
+      if(!sched)return null;
+      const e=sched[wi].days.map(d=>data[`W${wi+1}_${d.d}`]).filter(Boolean);
+      return e.length?{avg:(e.reduce((s,x)=>s+x.mood,0)/e.length).toFixed(1)}:null;
+    };
+    const total=Object.keys(data).length;
+    const avg=total?(Object.values(data).reduce((s,e)=>s+e.mood,0)/total).toFixed(1):null;
+
+    if(loading)return <Spinner/>;
+
+    // ── Login ──────────────────────────────────────────────────
+    if(view==="login")return(
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 flex items-center justify-center p-4">
+        {toast&&<Toast t={toast}/>}
+        <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm text-center">
+          <div className="text-5xl mb-3">💜</div>
+          <h1 className="text-2xl font-bold text-purple-800 mb-1">Pulse Check</h1>
+          <p className="text-gray-400 text-sm mb-6">Well-being tracker for your onboarding</p>
+          <input className="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-center focus:outline-none focus:border-purple-500 text-gray-700 mb-3" placeholder="Your full name" value={nameIn} onChange={e=>setNameIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+          <button onClick={handleLogin} disabled={!nameIn.trim()} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl transition-colors mb-4">Enter as Agent →</button>
+          <button onClick={()=>setView("trainerPin")} className="w-full border-2 border-purple-200 hover:border-purple-400 text-purple-600 text-sm font-medium py-2.5 rounded-xl transition-colors">🎓 Trainer login</button>
+        </div>
+      </div>
+    );
+
+    // ── Trainer PIN ────────────────────────────────────────────
+    if(view==="trainerPin")return(
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm text-center">
+          <div className="text-4xl mb-3">🔐</div>
+          <h2 className="text-xl font-bold text-gray-800 mb-5">Trainer Access</h2>
+          <input type="password" className={`w-full border-2 rounded-xl px-4 py-3 text-center focus:outline-none text-gray-700 mb-3 ${pinErr?"border-red-400":"border-purple-200 focus:border-purple-500"}`} placeholder="Enter PIN" value={pinIn} onChange={e=>{setPinIn(e.target.value);setPinErr(false);}} onKeyDown={e=>e.key==="Enter"&&handlePin()}/>
+          {pinErr&&<p className="text-red-400 text-xs mb-2">Wrong PIN</p>}
+          <button onClick={handlePin} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-xl transition-colors mb-3">Enter</button>
+          <button onClick={()=>{setView("login");setPinIn("");setPinErr(false);}} className="text-gray-400 text-sm hover:text-gray-600">← Back</button>
+        </div>
+      </div>
+    );
+
+    // ── Trainer Panel ──────────────────────────────────────────
+    if(view==="trainer")return(
+      <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 p-4">
+        {toast&&<Toast t={toast}/>}
+        <div className="max-w-lg mx-auto">
+          <div className="bg-white rounded-3xl shadow-sm p-6 mb-4">
+            <div className="flex items-center justify-between mb-5">
+              <div><div className="text-xs text-purple-400 font-medium uppercase tracking-wide">Trainer Panel</div><h2 className="text-xl font-bold text-gray-800">Onboarding Schedule</h2></div>
+              <button onClick={()=>setView("login")} className="text-gray-400 text-sm hover:text-gray-600">← Exit</button>
+            </div>
+            <label className="block text-sm font-medium text-gray-600 mb-2">Start date <span className="text-purple-500">(Monday of Week 1)</span></label>
+            <input type="date" className="w-full border-2 border-purple-200 focus:border-purple-500 rounded-xl px-4 py-3 text-gray-700 focus:outline-none mb-4" value={startDate} onChange={e=>setStartDate(e.target.value)}/>
+            {startDate&&(
+              <div className="bg-purple-50 rounded-2xl p-4 mb-4 space-y-3">
+                {buildSched(startDate).map((w,wi)=>(
+                  <div key={wi}><div className="text-xs font-semibold text-purple-600 mb-1">{w.label} {w.emoji}</div>
+                  <div className="flex gap-2 flex-wrap">{w.days.map(({d,date})=>(
+                    <div key={d} className="bg-white rounded-xl px-3 py-1.5 text-center shadow-sm"><div className="text-xs font-bold text-gray-700">{d}</div><div className="text-xs text-gray-400">{date}</div></div>
+                  ))}</div></div>
+                ))}
+              </div>
+            )}
+            <button onClick={saveSched} disabled={!startDate} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl transition-colors">💾 Save & publish schedule</button>
+          </div>
+          <p className="text-center text-xs text-gray-400">After saving, all agents will see the updated dates.</p>
+        </div>
+      </div>
+    );
+
+    // ── Agent View ─────────────────────────────────────────────
+    return(
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 p-4">
+        {toast&&<Toast t={toast}/>}
+        <div className="max-w-3xl mx-auto">
+          <div className="bg-white rounded-3xl shadow-sm p-5 mb-4 flex items-center justify-between">
+            <div><div className="text-xs text-purple-400 font-medium uppercase tracking-wide">Pulse Check</div><div className="text-xl font-bold text-gray-800">Hey, {user}! 👋</div></div>
+            <div className="flex gap-3">
+              <div className="bg-purple-50 rounded-2xl px-4 py-2 text-center"><div className="text-2xl font-bold text-purple-700">{total}<span className="text-gray-400 text-sm font-normal">/20</span></div><div className="text-xs text-gray-500">days filled</div></div>
+              {avg&&<div className="bg-purple-50 rounded-2xl px-4 py-2 text-center"><div className="text-2xl font-bold text-purple-700">{avg}</div><div className="text-xs text-gray-500">avg mood</div></div>}
+            </div>
+          </div>
+
+          {!sched?(
+            <div className="bg-white rounded-3xl shadow-sm p-10 text-center"><div className="text-4xl mb-3">📅</div><p className="text-gray-500 text-sm">The trainer hasn't set the schedule yet.<br/>Check back soon!</p></div>
+          ):(<>
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+              {sched.map((w,i)=>{const st=wStats(i);return(
+                <button key={i} onClick={()=>setActiveW(i)} className={`flex-shrink-0 rounded-2xl px-4 py-2 text-sm font-medium transition-all ${activeW===i?"bg-purple-600 text-white shadow-md":"bg-white text-gray-600 hover:bg-purple-50"}`}>
+                  {w.label} {w.emoji.slice(0,2)}{st&&<span className="ml-1 opacity-70">· {st.avg}</span>}
+                </button>
+              );})}
+            </div>
+
+            {sched.map((week,wIdx)=>wIdx!==activeW?null:(
+              <div key={wIdx} className="bg-white rounded-3xl shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div><h2 className="font-bold text-gray-800 text-lg">{week.label} {week.emoji}</h2><div className="text-sm text-gray-400">{week.days[0].date} – {week.days[4].date}</div></div>
+                  {wStats(wIdx)&&<div className="text-right"><div className="text-xs text-gray-400">Week avg</div><div className="text-xl font-bold text-purple-600">{wStats(wIdx).avg} / 5</div></div>}
+                </div>
+                <div className="space-y-3">
+                  {week.days.map(({d,date})=>{
+                    const key=`W${wIdx+1}_${d}`;const entry=data[key];const isEd=editing===key;
+                    return(
+                      <div key={key} className={`rounded-2xl border-2 transition-all ${isEd?"border-purple-400 bg-purple-50":entry?"border-gray-100 bg-gray-50":"border-dashed border-gray-200 bg-white"}`}>
+                        <div className="flex items-center gap-3 p-3">
+                          <div className="w-16 text-center flex-shrink-0"><div className="font-bold text-gray-700">{d}</div><div className="text-xs text-gray-400">{date}</div></div>
+                          {!isEd?(<>
+                            <div className="flex-1">{entry?(
+                              <div className="flex items-center gap-2">
+                                <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${MBGS[entry.mood]}`}>{entry.mood}</span>
+                                <span className="text-lg">{MOODS[entry.mood-1].e}</span>
+                                {entry.comment&&<span className="text-xs text-gray-500 italic truncate max-w-xs">"{entry.comment}"</span>}
+                              </div>
+                            ):<span className="text-sm text-gray-400">Not filled yet</span>}</div>
+                            <button onClick={()=>{setEditing(key);setDraft({mood:entry?.mood||null,comment:entry?.comment||""});}} className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded-xl font-medium">{entry?"Edit":"Fill in"}</button>
+                          </>):(
+                            <div className="flex-1">
+                              <div className="flex gap-2 mb-3 flex-wrap">
+                                {MOODS.map(m=>(
+                                  <button key={m.v} onClick={()=>setDraft(p=>({...p,mood:m.v}))} className={`flex flex-col items-center px-3 py-2 rounded-xl border-2 transition-all ${draft.mood===m.v?`${m.bg} ${m.ri} ring-2`:"border-gray-200 bg-white"}`}>
+                                    <span className="text-xl">{m.e}</span><span className="font-bold text-gray-700 text-sm">{m.v}</span>
+                                  </button>
+                                ))}
+                              </div>
+                              {draft.mood!==null&&(<div>
+                                <label className={`text-xs mb-1 block ${draft.mood<3?"font-medium text-red-500":"text-gray-400"}`}>{draft.mood<3?"⚠️ Required: tell your trainer what's going on":"Optional comment"}</label>
+                                <textarea className="w-full border-2 border-gray-200 focus:border-purple-400 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none" rows={2} placeholder={draft.mood<3?"What's on your mind? 💬":"Anything to share?"} value={draft.comment} onChange={e=>setDraft(p=>({...p,comment:e.target.value}))}/>
+                              </div>)}
+                              <div className="flex gap-2 mt-2">
+                                <button onClick={saveEntry} disabled={saving} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded-xl disabled:opacity-50">{saving?"Saving…":"Save ✓"}</button>
+                                <button onClick={()=>setEditing(null)} className="text-gray-400 text-xs px-3 py-2 rounded-xl hover:bg-gray-100">Cancel</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </>)}
+          <div className="text-center text-xs text-gray-400 mt-4 pb-4">Each day at 3:30 PM · Rate 1–5 · Comment required if below 3 💜</div>
+        </div>
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
