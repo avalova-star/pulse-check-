@@ -14,52 +14,43 @@
 <script type="text/babel">
   const { useState, useEffect } = React;
 
-  
-  const BASE = "https://n8n.hjoy.net/webhook/pulse/entry";
-  POST BASE/entry = "https://n8n.hjoy.net/webhook/pulse/entry";
-  POST BASE/load = "https://n8n.hjoy.net/webhook/pulse/load";
-  POST BASE/schedule = "https://n8n.hjoy.net/webhook/pulse/schedule";
-  GET  BASE/schedule = "https://n8n.hjoy.net/webhook/pulse/schedule";
-  POST BASE/pin = "https://n8n.hjoy.net/webhook/pulse/pin";
+  // ✏️ ЗАМІНИТИ:
+  const N8N_ENTRY_URL   = "https://n8n.hjoy.net/webhook/pulse/entry";
+  const N8N_LOAD_URL    = "https://n8n.hjoy.net/webhook/pulse/load";
+  const N8N_SCHED_GET   = "https://n8n.hjoy.net/webhook/pulse/schedule";
+  const N8N_SCHED_SAVE  = "https://n8n.hjoy.net/webhook/pulse/schedule";
+  const TRAINER_PIN     = "1234"; 
 
-  const WEEKS  = [{label:"Week 1",emoji:"⭐🍎"},{label:"Week 2",emoji:"🍏👏"},{label:"Week 3",emoji:"🍍✍️"},{label:"Week 4",emoji:"🍋🍐"}];
-  const DAYS   = ["Mon","Tue","Wed","Thu","Fri"];
-  const MOODS  = [{v:1,e:"😞",bg:"bg-red-100",ri:"ring-red-400"},{v:2,e:"😕",bg:"bg-orange-100",ri:"ring-orange-400"},{v:3,e:"😐",bg:"bg-yellow-100",ri:"ring-yellow-400"},{v:4,e:"😊",bg:"bg-green-100",ri:"ring-green-400"},{v:5,e:"🤩",bg:"bg-emerald-100",ri:"ring-emerald-500"}];
-  const MBGS   = ["","bg-red-400","bg-orange-400","bg-yellow-400","bg-green-400","bg-emerald-500"];
+  const WEEKS = [{label:"Week 1",emoji:"⭐🍎"},{label:"Week 2",emoji:"🍏👏"},{label:"Week 3",emoji:"🍍✍️"},{label:"Week 4",emoji:"🍋🍐"}];
+  const DAYS  = ["Mon","Tue","Wed","Thu","Fri"];
+  const MOODS = [{v:1,e:"😞",bg:"bg-red-100",ri:"ring-red-400"},{v:2,e:"😕",bg:"bg-orange-100",ri:"ring-orange-400"},{v:3,e:"😐",bg:"bg-yellow-100",ri:"ring-yellow-400"},{v:4,e:"😊",bg:"bg-green-100",ri:"ring-green-400"},{v:5,e:"🤩",bg:"bg-emerald-100",ri:"ring-emerald-500"}];
+  const MBGS  = ["","bg-red-400","bg-orange-400","bg-yellow-400","bg-green-400","bg-emerald-500"];
 
   function addDays(s,n){const d=new Date(s);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
-  function fmt(s){if(!s)return"—";return new Date(s).toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}
+  function fmt(s){return new Date(s).toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}
   function buildSched(sd){return WEEKS.map((w,wi)=>({...w,days:DAYS.map((d,di)=>{const iso=addDays(sd,wi*7+di);return{d,date:fmt(iso),iso};})}));}
 
-  async function api(path, body){
-    const isGet = !body;
-    const res = await fetch(BASE+path, isGet ? undefined : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    return res.json();
-  }
-
   function Toast({t}){return <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium ${t.type==="ok"?"bg-green-500":"bg-orange-500"} text-white`}>{t.msg}</div>;}
-  function Spinner(){return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-violet-100"><div className="text-4xl animate-pulse">💜</div></div>;}
 
-  // ════════════════════════════════════════════════════════════
   function App(){
-    const [view,setView]   = useState("login");
-    const [user,setUser]   = useState("");
+    const [view,setView]     = useState("login");
+    const [user,setUser]     = useState("");
     const [nameIn,setNameIn] = useState("");
-    const [pinIn,setPinIn] = useState("");
+    const [pinIn,setPinIn]   = useState("");
     const [pinErr,setPinErr] = useState(false);
-    const [sched,setSched] = useState(null);
-    const [startDate,setStartDate] = useState("");
-    const [data,setData]   = useState({});
-    const [editing,setEditing] = useState(null);
-    const [draft,setDraft] = useState({mood:null,comment:""});
+    const [sched,setSched]   = useState(null);
+    const [startDate,setSD]  = useState("");
+    const [data,setData]     = useState({});
+    const [editing,setEdit]  = useState(null);
+    const [draft,setDraft]   = useState({mood:null,comment:""});
     const [saving,setSaving] = useState(false);
-    const [loading,setLoading] = useState(false);
-    const [toast,setToast] = useState(null);
-    const [activeW,setActiveW] = useState(0);
+    const [loading,setLoad]  = useState(false);
+    const [toast,setToast]   = useState(null);
+    const [activeW,setAW]    = useState(0);
 
     useEffect(()=>{
-      api("/schedule").then(r=>{
-        if(r?.startDate){setSched(buildSched(r.startDate));setStartDate(r.startDate);}
+      fetch(N8N_SCHED_GET).then(r=>r.json()).then(r=>{
+        if(r?.startDate){setSched(buildSched(r.startDate));setSD(r.startDate);}
       }).catch(()=>{});
     },[]);
 
@@ -67,22 +58,23 @@
 
     const handleLogin=async()=>{
       if(!nameIn.trim())return;
-      setLoading(true);
+      setLoad(true);
       try{
-        const r=await api("/load",{agent:nameIn.trim()});
+        const r=await fetch(N8N_LOAD_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:nameIn.trim()})}).then(r=>r.json());
         setData(r?.data||{});
       }catch{setData({});}
-      setUser(nameIn.trim()); setView("agent"); setLoading(false);
+      setUser(nameIn.trim());setView("agent");setLoad(false);
     };
 
-    const handlePin=async()=>{
-      const r=await api("/pin",{pin:pinIn}).catch(()=>({ok:false}));
-      if(r?.ok){setPinErr(false);setView("trainer");}else setPinErr(true);
+    // PIN перевіряється локально — без n8n
+    const handlePin=()=>{
+      if(pinIn===TRAINER_PIN){setPinErr(false);setView("trainer");}
+      else setPinErr(true);
     };
 
     const saveSched=async()=>{
       if(!startDate)return showToast("⚠️ Pick a start date","warn");
-      await api("/schedule",{startDate}).catch(()=>{});
+      await fetch(N8N_SCHED_SAVE,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({startDate})}).catch(()=>{});
       setSched(buildSched(startDate));
       showToast("✅ Schedule saved!");
     };
@@ -91,12 +83,12 @@
       if(!draft.mood)return showToast("⚠️ Select a mood first","warn");
       if(draft.mood<3&&!draft.comment.trim())return showToast("⚠️ Leave a comment for your trainer","warn");
       setSaving(true);
-      const [wk,day]=editing.split("_"); const wi=parseInt(wk.replace("W",""))-1;
-      const wo=sched?.[wi]; const dobj=wo?.days.find(d=>d.d===day);
+      const [wk,day]=editing.split("_");const wi=parseInt(wk.replace("W",""))-1;
+      const wo=sched?.[wi];const dobj=wo?.days.find(d=>d.d===day);
       const nd={...data,[editing]:{mood:draft.mood,comment:draft.comment,savedAt:new Date().toISOString()}};
       setData(nd);
-      await api("/entry",{agent:user,week:wo?.label,day,date:dobj?.date,mood:draft.mood,comment:draft.comment,timestamp:new Date().toISOString(),key:editing}).catch(()=>{});
-      setSaving(false); setEditing(null); showToast("✅ Saved!");
+      await fetch(N8N_ENTRY_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:user,week:wo?.label,day,date:dobj?.date,mood:draft.mood,comment:draft.comment,timestamp:new Date().toISOString(),key:editing})}).catch(()=>{});
+      setSaving(false);setEdit(null);showToast("✅ Saved!");
     };
 
     const wStats=wi=>{
@@ -107,9 +99,8 @@
     const total=Object.keys(data).length;
     const avg=total?(Object.values(data).reduce((s,e)=>s+e.mood,0)/total).toFixed(1):null;
 
-    if(loading)return <Spinner/>;
+    if(loading)return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-violet-100"><div className="text-4xl animate-pulse">💜</div></div>;
 
-    // ── Login ──────────────────────────────────────────────────
     if(view==="login")return(
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 flex items-center justify-center p-4">
         {toast&&<Toast t={toast}/>}
@@ -124,7 +115,6 @@
       </div>
     );
 
-    // ── Trainer PIN ────────────────────────────────────────────
     if(view==="trainerPin")return(
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm text-center">
@@ -138,7 +128,6 @@
       </div>
     );
 
-    // ── Trainer Panel ──────────────────────────────────────────
     if(view==="trainer")return(
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 p-4">
         {toast&&<Toast t={toast}/>}
@@ -149,7 +138,7 @@
               <button onClick={()=>setView("login")} className="text-gray-400 text-sm hover:text-gray-600">← Exit</button>
             </div>
             <label className="block text-sm font-medium text-gray-600 mb-2">Start date <span className="text-purple-500">(Monday of Week 1)</span></label>
-            <input type="date" className="w-full border-2 border-purple-200 focus:border-purple-500 rounded-xl px-4 py-3 text-gray-700 focus:outline-none mb-4" value={startDate} onChange={e=>setStartDate(e.target.value)}/>
+            <input type="date" className="w-full border-2 border-purple-200 focus:border-purple-500 rounded-xl px-4 py-3 text-gray-700 focus:outline-none mb-4" value={startDate} onChange={e=>setSD(e.target.value)}/>
             {startDate&&(
               <div className="bg-purple-50 rounded-2xl p-4 mb-4 space-y-3">
                 {buildSched(startDate).map((w,wi)=>(
@@ -162,12 +151,10 @@
             )}
             <button onClick={saveSched} disabled={!startDate} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl transition-colors">💾 Save & publish schedule</button>
           </div>
-          <p className="text-center text-xs text-gray-400">After saving, all agents will see the updated dates.</p>
         </div>
       </div>
     );
 
-    // ── Agent View ─────────────────────────────────────────────
     return(
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-violet-100 p-4">
         {toast&&<Toast t={toast}/>}
@@ -185,12 +172,11 @@
           ):(<>
             <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
               {sched.map((w,i)=>{const st=wStats(i);return(
-                <button key={i} onClick={()=>setActiveW(i)} className={`flex-shrink-0 rounded-2xl px-4 py-2 text-sm font-medium transition-all ${activeW===i?"bg-purple-600 text-white shadow-md":"bg-white text-gray-600 hover:bg-purple-50"}`}>
+                <button key={i} onClick={()=>setAW(i)} className={`flex-shrink-0 rounded-2xl px-4 py-2 text-sm font-medium transition-all ${activeW===i?"bg-purple-600 text-white shadow-md":"bg-white text-gray-600 hover:bg-purple-50"}`}>
                   {w.label} {w.emoji.slice(0,2)}{st&&<span className="ml-1 opacity-70">· {st.avg}</span>}
                 </button>
               );})}
             </div>
-
             {sched.map((week,wIdx)=>wIdx!==activeW?null:(
               <div key={wIdx} className="bg-white rounded-3xl shadow-sm p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -212,7 +198,7 @@
                                 {entry.comment&&<span className="text-xs text-gray-500 italic truncate max-w-xs">"{entry.comment}"</span>}
                               </div>
                             ):<span className="text-sm text-gray-400">Not filled yet</span>}</div>
-                            <button onClick={()=>{setEditing(key);setDraft({mood:entry?.mood||null,comment:entry?.comment||""});}} className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded-xl font-medium">{entry?"Edit":"Fill in"}</button>
+                            <button onClick={()=>{setEdit(key);setDraft({mood:entry?.mood||null,comment:entry?.comment||""});}} className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded-xl font-medium">{entry?"Edit":"Fill in"}</button>
                           </>):(
                             <div className="flex-1">
                               <div className="flex gap-2 mb-3 flex-wrap">
@@ -228,7 +214,7 @@
                               </div>)}
                               <div className="flex gap-2 mt-2">
                                 <button onClick={saveEntry} disabled={saving} className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded-xl disabled:opacity-50">{saving?"Saving…":"Save ✓"}</button>
-                                <button onClick={()=>setEditing(null)} className="text-gray-400 text-xs px-3 py-2 rounded-xl hover:bg-gray-100">Cancel</button>
+                                <button onClick={()=>setEdit(null)} className="text-gray-400 text-xs px-3 py-2 rounded-xl hover:bg-gray-100">Cancel</button>
                               </div>
                             </div>
                           )}
