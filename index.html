@@ -14,14 +14,13 @@
 <script type="text/babel">
   const { useState, useEffect } = React;
 
-  // ✏️ ЗАМІНИТИ НА СВІЙ n8n URL:
+  
   const BASE = "https://n8n.hjoy.net/webhook/pulse/entry";
-  // Ендпоінти:
-  // POST BASE/entry      — зберегти запис
-  // POST BASE/load       — завантажити дані юзера
-  // POST BASE/schedule   — зберегти розклад (тренер)
-  // GET  BASE/schedule   — отримати розклад
-  // POST BASE/pin        — перевірити PIN
+  POST BASE/entry = "https://n8n.hjoy.net/webhook/pulse/entry";
+  POST BASE/load = "https://n8n.hjoy.net/webhook/pulse/load";
+  POST BASE/schedule = "https://n8n.hjoy.net/webhook/pulse/schedule";
+  GET  BASE/schedule = "https://n8n.hjoy.net/webhook/pulse/schedule";
+  POST BASE/pin = "https://n8n.hjoy.net/webhook/pulse/pin";
 
   const WEEKS  = [{label:"Week 1",emoji:"⭐🍎"},{label:"Week 2",emoji:"🍏👏"},{label:"Week 3",emoji:"🍍✍️"},{label:"Week 4",emoji:"🍋🍐"}];
   const DAYS   = ["Mon","Tue","Wed","Thu","Fri"];
